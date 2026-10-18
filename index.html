@@ -330,6 +330,7 @@ function load(){
     state.tablets=Array.isArray(s.tablets)?s.tablets:[];
     state.settings=Object.assign({},DEFAULT_SETTINGS,s.settings||{});
     ['sound','cafTimes','vibrate'].forEach(function(k){delete state.settings[k];});
+    state.savedAt=typeof s.savedAt==='number'?s.savedAt:0;
     state.cfgRev=typeof s.cfgRev==='number'?s.cfgRev:0;
     state.backupAt=typeof s.backupAt==='number'?s.backupAt:null;
     state.backupRev=typeof s.backupRev==='number'?s.backupRev:-1;
@@ -349,8 +350,51 @@ function load(){
     state.entries.forEach(function(e){if(e){delete e.fat;delete e.salty;}});
   }catch(e){}
 }
+/* Zweitspeicher (IndexedDB): Spiegel des Zustands, stellt sich bei geleertem localStorage selbst wieder her */
+var idbReady=false;
+function idbOpen(cb){
+  try{
+    var rq=indexedDB.open('fuel-tracker-mirror',1);
+    rq.onupgradeneeded=function(){rq.result.createObjectStore('kv');};
+    rq.onsuccess=function(){cb(rq.result);};
+    rq.onerror=function(){cb(null);};
+    rq.onblocked=function(){cb(null);};
+  }catch(e){cb(null);}
+}
+function idbPut(raw,at){
+  if(!idbReady)return;
+  idbOpen(function(db){
+    if(!db)return;
+    try{var tx=db.transaction('kv','readwrite');tx.objectStore('kv').put({at:at,raw:raw},'cur');tx.oncomplete=function(){db.close();};tx.onerror=function(){db.close();};}catch(e){}
+  });
+}
+function idbRestoreCheck(done){
+  function fin(){idbReady=true;if(done)done();}
+  idbOpen(function(db){
+    if(!db){fin();return;}
+    try{
+      var g=db.transaction('kv','readonly').objectStore('kv').get('cur');
+      g.onsuccess=function(){
+        var rec=g.result;db.close();
+        try{
+          if(rec&&rec.raw&&rec.at>(state.savedAt||0)){
+            JSON.parse(rec.raw);
+            localStorage.setItem(KEY,rec.raw);
+            load();applyTheme();renderAll();tick();
+            toast('Daten aus dem Zweitspeicher wiederhergestellt ('+state.entries.length+' Eintr\u00e4ge).');
+          }
+        }catch(e){}
+        fin();
+      };
+      g.onerror=function(){db.close();fin();};
+    }catch(e){fin();}
+  });
+}
 function save(){
-  try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}
+  state.savedAt=Date.now();
+  var raw=null;
+  try{raw=JSON.stringify(state);localStorage.setItem(KEY,raw);}catch(e){}
+  if(raw)idbPut(raw,state.savedAt);
   var bk=document.getElementById('bBk');
   function stamp(ok){
     if(!bk)return;var d=new Date(),t=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
@@ -1084,6 +1128,7 @@ $('#bkCancel').addEventListener('click',function(){$('#bkPreview').style.display
 $('#bkClose').addEventListener('click',function(){hide('#veilBackup');});
 
 load();applyTheme();renderAll();tick();
+idbRestoreCheck(function(){});
 if(migratedFat>0){save();toast('Die Flags „Fett" und „salzig" sind entfallen. '+(migratedFat===1?'Bei 1 Kachel fehlt':'Bei '+migratedFat+' Kacheln fehlt')+' jetzt das Fett in Gramm (unter „Kacheln bearbeiten" mit ⚠ markiert).');}
 if(isRunning())requestWake();
 setInterval(tick,1000);
