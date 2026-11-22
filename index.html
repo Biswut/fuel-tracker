@@ -122,6 +122,7 @@ h2{font-size:18px;font-weight:800;margin:22px 0 8px}
 .row .x{flex:1;min-width:0}
 .row .x small{color:var(--muted);display:block}
 .row button{flex:none;border:1px solid var(--line);background:var(--bg);border-radius:10px;width:40px;height:40px;font-size:18px}
+.row button.rep{font-weight:700;color:var(--accent,inherit)}
 .empty{color:var(--muted);font-size:15px;padding:6px 2px}
 
 .foot{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px}
@@ -628,6 +629,12 @@ function addEntry(item,qty){
   toast(msg,acts);
   return true;
 }
+function repeatEntry(e){
+  var item={id:'__rep',name:e.name,unitQty:e.qty,unitName:e.unit||'',kh:e.kh,kcal:e.kcal||0};
+  if(e.fatG!=null)item.fatG=e.fatG;
+  if(e.saltG!=null)item.saltG=e.saltG;
+  return addEntry(item,e.qty);
+}
 function removeEntry(id){
   state.entries=state.entries.filter(function(e){return e.id!==id;});
   save();renderAll();tick();
@@ -851,6 +858,7 @@ function renderHist(){
       var e=r.e;
       box.appendChild(el('div',{class:'row'},el('span',{class:'t',text:hm(e.ts)}),
         el('span',{class:'x'},e.name,el('small',{text:fmtNum(e.qty)+' '+(e.unit||'')+' · '+fmtNum(e.kh)+' g KH'})),
+        el('button',{type:'button',class:'rep','aria-label':'Nochmal eintragen',text:'+',onclick:function(){repeatEntry(e);}}),
         el('button',{type:'button','aria-label':'Eintrag löschen',text:'×',onclick:function(){removeEntryUndo(e);}})));
     }else{
       box.appendChild(el('div',{class:'row'},el('span',{class:'t',text:hm(r.ts)}),
